@@ -1,14 +1,13 @@
 #![allow(dead_code)]
+use crate::db::Sqlite;
+use anyhow::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde_json::Value;
+use std::sync::Arc;
 use style::palette::tailwind;
 use style::Color;
 
 pub const ITEM_HEIGHT: usize = 4;
-
-pub const INFO_TEXT_MAIN: &str =
-    "(Esc) quit | (Space) toggle schema | (↑) move up | (↓) move down | (→) table view";
-pub const INFO_TEXT_TABLE: &str = "(Esc) quit | (↑) move up | (↓) move down | (←) main view";
 pub const MAX_TABLE_ITEMS: usize = 100;
 
 #[derive(Debug, Clone)]
@@ -16,11 +15,13 @@ pub struct TableColors {
     pub buffer_bg: Color,
     pub header_bg: Color,
     pub header_fg: Color,
+    pub selected_header_fg: Color,
     pub row_fg: Color,
     pub selected_style_fg: Color,
     pub normal_row_color: Color,
     pub alt_row_color: Color,
     pub footer_border_color: Color,
+    pub highlight_column_fg: Color,
 }
 
 impl TableColors {
@@ -29,26 +30,32 @@ impl TableColors {
             buffer_bg: tailwind::SLATE.c950,
             header_bg: color.c900,
             header_fg: tailwind::SLATE.c200,
+            selected_header_fg: tailwind::SLATE.c800,
             row_fg: tailwind::SLATE.c200,
-            selected_style_fg: color.c400,
+            selected_style_fg: color.c600,
             normal_row_color: tailwind::SLATE.c950,
             alt_row_color: tailwind::SLATE.c900,
             footer_border_color: color.c400,
+            highlight_column_fg: color.c800,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Table {
-    pub name: String,
-    pub columns: Vec<String>,
-    pub rows: Vec<Vec<Value>>,
-    pub schema: Option<String>,
+    name: String,
+    columns: Vec<String>,
+    rows: Vec<Vec<Value>>,
+    schema: Option<String>,
 }
 
 impl Table {
     pub const fn schema(&self) -> &Option<String> {
         &self.schema
+    }
+
+    pub fn rows(&self) -> &Vec<Vec<Value>> {
+        &self.rows
     }
 }
 
@@ -60,28 +67,97 @@ pub enum ViewState {
 
 #[derive(Debug, Clone)]
 pub struct Model {
-    pub tables: Vec<Table>,
-    pub selected_table_id: usize,
-    pub state: TableState,
-    pub scroll_state: ScrollbarState,
-    pub colors: TableColors,
-    pub view_state: ViewState,
+    tables: Vec<Table>,
+    selected_table_id: usize,
+    state: TableState,
+    scroll_state: ScrollbarState,
+    active_column: usize,
+    colors: TableColors,
+    view_state: ViewState,
+    schema: bool,
+    column: bool,
+    db: Arc<Sqlite>,
 }
 
-impl Default for Model {
-    fn default() -> Self {
-        Self {
+impl Model {
+    pub fn new(db: Arc<Sqlite>) -> Result<Model> {
+        Ok(Model {
             tables: Vec::new(),
             selected_table_id: 0,
             state: TableState::default().with_selected(0),
             scroll_state: ScrollbarState::default(),
+            active_column: 0,
             colors: TableColors::new(&tailwind::TEAL),
             view_state: ViewState::Main,
+            schema: false,
+            column: false,
+            db,
+        })
+    }
+    pub async fn initialize(&mut self) -> Result<()> {
+        let tables = self.db.tables().await?;
+        let items_future: Vec<_> = tables
+            .into_iter()
+            .enumerate()
+            .map(|(id, table)| {
+                let db = self.db.clone();
+                async move {
+                    let result: Result<Table, _> = Ok::<Table, anyhow::Error>(Table {
+                        name: table.clone(),
+                        columns: Self::get_columns(None, &db, &ViewState::Main).await?,
+                        rows: Self::get_rows(id + 1, &table, &db, &ViewState::Main).await?,
+                        schema: Some(db.table_schema(table.as_str()).await?),
+                    });
+                    result
+                }
+            })
+            .collect();
+        let items: Vec<Result<Table, _>> = futures::future::join_all(items_future).await;
+        self.tables = items.into_iter().collect::<Result<Vec<Table>>>()?;
+        self.scroll_state = ScrollbarState::new(self.tables.len() - 1);
+
+        Ok(())
+    }
+
+    pub async fn get_columns(
+        name: Option<&str>,
+        db: &Arc<Sqlite>,
+        view: &ViewState,
+    ) -> Result<Vec<String>> {
+        match view {
+            ViewState::Main => Ok(vec!["#", "Table", "Columns", "Rows"]
+                .into_iter()
+                .map(String::from)
+                .collect()),
+            ViewState::Table => db.table_columns(name.unwrap()).await,
         }
     }
-}
 
-impl Model {
+    pub async fn get_rows(
+        id: usize,
+        table: &str,
+        db: &Arc<Sqlite>,
+        view: &ViewState,
+    ) -> Result<Vec<Vec<Value>>> {
+        match view {
+            ViewState::Main => {
+                let columns = db.table_columns(table).await?;
+                let rows = db.get_rows("*", table).await?;
+                let len = rows.len();
+
+                Ok(vec![vec![
+                    Value::from(id.to_string()),
+                    Value::from(table.to_string()),
+                    Value::from(columns.len().to_string()),
+                    Value::from(len.to_string()),
+                ]]
+                .into_iter()
+                .collect())
+            }
+            ViewState::Table => db.get_rows("*", table).await,
+        }
+    }
+
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => match self.view_state {
@@ -105,6 +181,7 @@ impl Model {
         self.state.select(Some(i));
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
     }
+
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => match self.view_state {
@@ -127,5 +204,159 @@ impl Model {
         };
         self.state.select(Some(i));
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+    }
+
+    pub async fn switch_to_table_view(&mut self) -> Result<()> {
+        if self.view_state == ViewState::Main {
+            self.schema = false;
+            self.column = false;
+            self.active_column = 0;
+            self.selected_table_id = self.state.selected().unwrap_or(0);
+            self.state = TableState::default().with_selected(0);
+            self.view_state = ViewState::Table;
+            for i in 0..self.tables.len() {
+                self.tables[i].rows =
+                    Self::get_rows(i + 1, &self.tables[i].name, &self.db, &ViewState::Table)
+                        .await?;
+                self.tables[i].columns =
+                    Self::get_columns(Some(&self.tables[i].name), &self.db, &ViewState::Table)
+                        .await?;
+            }
+            self.scroll_state = ScrollbarState::new(
+                (self.tables[self.selected_table_id].rows.len() - 1) * ITEM_HEIGHT,
+            );
+        }
+        Ok(())
+    }
+
+    pub async fn switch_to_main_view(&mut self) -> Result<()> {
+        if self.view_state == ViewState::Table {
+            self.column = false;
+            self.active_column = 0;
+            self.selected_table_id = self
+                .state
+                .selected()
+                .unwrap_or(0)
+                .min(self.tables.len() - 1);
+            self.state = TableState::default().with_selected(0);
+            self.view_state = ViewState::Main;
+            for i in 0..self.tables.len() {
+                self.tables[i].rows =
+                    Self::get_rows(i + 1, &self.tables[i].name, &self.db, &ViewState::Main).await?;
+                self.tables[i].columns =
+                    Self::get_columns(None, &self.db, &ViewState::Main).await?;
+            }
+            self.scroll_state = ScrollbarState::new((self.tables.len() - 1) * ITEM_HEIGHT);
+        }
+        Ok(())
+    }
+
+    pub fn tables(&self) -> &[Table] {
+        &self.tables
+    }
+
+    pub fn table_schema(&self) -> &Option<String> {
+        &self.tables[self.state.selected().unwrap_or(0)].schema
+    }
+
+    pub fn get_table_columns(&self) -> &[String] {
+        &self.tables[self.selected_table_id].columns
+    }
+
+    pub fn get_table_rows(&self) -> &[Vec<Value>] {
+        &self.tables[self.selected_table_id].rows
+    }
+
+    pub fn get_longest_in_column(&self) -> u16 {
+        const WIDTH_PERCENTAGE: f32 = 1.1;
+        let longest_row = self.tables[self.selected_table_id]
+            .rows
+            .iter()
+            .map(|row| row[self.active_column].as_str().unwrap().len())
+            .max()
+            .unwrap_or(0);
+
+        let longest_column = self.tables[self.selected_table_id].columns[self.active_column]
+            .as_str()
+            .len();
+        (longest_row.max(longest_column) as f32 * WIDTH_PERCENTAGE) as u16
+    }
+
+    pub fn get_view_state(&self) -> ViewState {
+        self.view_state.clone()
+    }
+
+    pub fn get_colors(&self) -> &TableColors {
+        &self.colors
+    }
+
+    pub fn get_selected_table_id(&self) -> usize {
+        self.selected_table_id
+    }
+
+    pub fn get_state(&self) -> &TableState {
+        &self.state
+    }
+
+    pub fn get_scroll_state(&self) -> &ScrollbarState {
+        &self.scroll_state
+    }
+
+    pub fn is_schema_enabled(&self) -> bool {
+        self.schema
+    }
+
+    pub fn toggle_schema(&mut self) {
+        if self.view_state == ViewState::Main {
+            self.schema = !self.schema;
+        }
+    }
+
+    pub fn is_column_enabled(&self) -> bool {
+        self.column
+    }
+
+    pub fn toggle_column(&mut self) {
+        self.column = !self.column;
+    }
+
+    pub fn active_column(&self) -> usize {
+        self.active_column
+    }
+
+    pub fn next_column(&mut self) {
+        if self.is_column_enabled() {
+            self.active_column =
+                (self.active_column + 1) % self.tables[self.selected_table_id].columns.len();
+        }
+    }
+
+    pub fn previous_column(&mut self) {
+        if self.is_column_enabled() {
+            self.active_column = if self.active_column == 0 {
+                self.tables[self.selected_table_id].columns.len() - 1
+            } else {
+                self.active_column - 1
+            };
+        }
+    }
+
+    pub fn get_info_text(&self) -> String {
+        let mut result =
+            String::from("(Esc) quit | (↑) move up | (↓) move down | (⇧ S) toggle column select");
+        match self.view_state {
+            ViewState::Main => {
+                result.push_str(" | (Space) toggle schema (→) table view");
+            }
+            ViewState::Table => {
+                result.push_str(" | (←) main view");
+            }
+        }
+
+        if self.is_column_enabled() {
+            result.push_str(" | (⇧ ←) previous column | (⇧ →) next column");
+        }
+
+        result
     }
 }
