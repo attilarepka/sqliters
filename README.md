@@ -6,7 +6,7 @@ Built with [ratatui](https://github.com/ratatui-org/ratatui).
 
 ## Demo
 
-https://github.com/attilarepka/sqliters/assets/39063661/d3cbfddc-3c91-4b34-b8d6-0a1ab8abca38
+https://github.com/attilarepka/sqliters/assets/39063661/45971711-277f-4fbb-8d22-1e77821852ab
 
 ## Features
 
