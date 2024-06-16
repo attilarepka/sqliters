@@ -42,10 +42,11 @@ jobs:
       with:
         toml_path: .
     - name: upload deb artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amd64deb
         path: ./target/x86_64-unknown-linux-musl/debian/*
+        overwrite: true
   macosbuild:
     needs: [build, quickcheck]
     runs-on: macos-latest
@@ -57,10 +58,11 @@ jobs:
     - name: zip up macos binaries
       run: 'zip -j sqliters_${{needs.quickcheck.outputs.version}}_macos.zip ./target/release/sqliters ./target/release/sqliters'
     - name: upload macos artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: macos
         path: 'sqliters_${{needs.quickcheck.outputs.version}}_macos.zip'
+        overwrite: true
   windowsbuild:
     needs: [build, quickcheck]
     runs-on: windows-latest
@@ -72,10 +74,11 @@ jobs:
     - name: zip up windows binaries
       run: Compress-Archive -Path target\release\sqliters.exe -Destination sqliters_${{needs.quickcheck.outputs.version}}_windows.zip
     - name: upload windows artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: windows
         path: 'sqliters_${{needs.quickcheck.outputs.version}}_windows.zip'
+        overwrite: true
   amd64binaries:
     needs: [build, quickcheck]
     runs-on: ubuntu-latest
@@ -89,21 +92,24 @@ jobs:
         toml_path: .
         cmd: cargo build --release --target=x86_64-unknown-linux-musl
     - name: upload daemon artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amd64binaries
         path: ./target/x86_64-unknown-linux-musl/release/sqliters
+        overwrite: true
     - name: upload sqliters artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amd64binaries
         path: ./target/x86_64-unknown-linux-musl/release/sqliters
+        overwrite: true
     - run: 'zip -j amd64binaries.zip ./target/x86_64-unknown-linux-musl/release/sqliters ./target/x86_64-unknown-linux-musl/release/sqliters'
     - name: upload zip artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: amd64binaries
         path: amd64binaries.zip
+        overwrite: true
   update_release_draft:
     needs: [quickcheck, amd64binaries, macosbuild, debbuild, windowsbuild]
     runs-on: ubuntu-latest
@@ -120,8 +126,7 @@ jobs:
           body: 'Change Me'
           draft: true
           prerelease: false
-      - uses: actions/download-artifact@v3
-      - run: ls -lha
+      - uses: actions/download-artifact@v4
       - name: upload amd64 deb release asset
         uses: actions/upload-release-asset@v1
         env:

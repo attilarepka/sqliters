@@ -6,6 +6,9 @@ description = "TUI application, which allows you to browse SQLite databases dire
 licence = "MIT"
 authors = ["Attila Repka"]
 
+[package.metadata.deb]
+revision = ""
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
