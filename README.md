@@ -15,6 +15,8 @@ https://github.com/attilarepka/sqliters/assets/39063661/45971711-277f-4fbb-8d22-
 - **Keyboard Shortcuts**: Quick navigation and actions.
 - **Dynamic Layout**: Adapts to terminal sizes.
 
+## Contributing
+
 Open a GitHub issue or pull request.
 
 ## License
