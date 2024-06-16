@@ -42,7 +42,7 @@ jobs:
       with:
         toml_path: .
     - name: upload deb artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: amd64deb
         path: ./target/x86_64-unknown-linux-musl/debian/*
@@ -57,7 +57,7 @@ jobs:
     - name: zip up macos binaries
       run: 'zip -j sqliters_${{needs.quickcheck.outputs.version}}_macos.zip ./target/release/sqliters ./target/release/sqliters'
     - name: upload macos artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: macos
         path: 'sqliters_${{needs.quickcheck.outputs.version}}_macos.zip'
@@ -72,7 +72,7 @@ jobs:
     - name: zip up windows binaries
       run: Compress-Archive -Path target\release\sqliters.exe -Destination sqliters_${{needs.quickcheck.outputs.version}}_windows.zip
     - name: upload windows artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: windows
         path: 'sqliters_${{needs.quickcheck.outputs.version}}_windows.zip'
@@ -89,18 +89,18 @@ jobs:
         toml_path: .
         cmd: cargo build --release --target=x86_64-unknown-linux-musl
     - name: upload daemon artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: amd64binaries
         path: ./target/x86_64-unknown-linux-musl/release/sqliters
     - name: upload sqliters artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: amd64binaries
         path: ./target/x86_64-unknown-linux-musl/release/sqliters
     - run: 'zip -j amd64binaries.zip ./target/x86_64-unknown-linux-musl/release/sqliters ./target/x86_64-unknown-linux-musl/release/sqliters'
     - name: upload zip artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: amd64binaries
         path: amd64binaries.zip
