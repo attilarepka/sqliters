@@ -120,7 +120,7 @@ jobs:
           body: 'Change Me'
           draft: true
           prerelease: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v3
       - run: ls -lha
       - name: upload amd64 deb release asset
         uses: actions/upload-release-asset@v1
