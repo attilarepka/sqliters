@@ -1,7 +1,12 @@
 # sqliters
 
-sqliters is aTUI application, which allows you to browse SQLite databases directly from the terminal.
+**sqliters is a TUI application, which allows you to browse SQLite databases directly from the terminal.**
+
 Built with [ratatui](https://github.com/ratatui-org/ratatui).
+
+## Demo
+
+https://github.com/attilarepka/sqliters/assets/39063661/d3cbfddc-3c91-4b34-b8d6-0a1ab8abca38
 
 ## Features
 
