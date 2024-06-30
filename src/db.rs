@@ -7,7 +7,7 @@ use sqlx::{
     Column, QueryBuilder, Row, SqlitePool, TypeInfo,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Sqlite {
     pool: SqlitePool,
 }

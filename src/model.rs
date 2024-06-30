@@ -3,14 +3,13 @@ use crate::db::Sqlite;
 use anyhow::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde_json::Value;
-use std::sync::Arc;
 use style::palette::tailwind;
 use style::Color;
 
 pub const ITEM_HEIGHT: usize = 4;
 pub const MAX_TABLE_ITEMS: usize = 100;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableColors {
     pub buffer_bg: Color,
     pub header_bg: Color,
@@ -46,16 +45,23 @@ pub struct Table {
     name: String,
     columns: Vec<String>,
     rows: Vec<Vec<Value>>,
-    schema: Option<String>,
+    schema: String,
 }
 
 impl Table {
-    pub const fn schema(&self) -> &Option<String> {
-        &self.schema
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn columns(&self) -> &Vec<String> {
+        &self.columns
     }
 
     pub fn rows(&self) -> &Vec<Vec<Value>> {
         &self.rows
+    }
+    pub fn schema(&self) -> &str {
+        &self.schema.as_str()
     }
 }
 
@@ -76,11 +82,11 @@ pub struct Model {
     view_state: ViewState,
     schema: bool,
     column: bool,
-    db: Arc<Sqlite>,
+    db: Sqlite,
 }
 
 impl Model {
-    pub fn new(db: Arc<Sqlite>) -> Result<Model> {
+    pub fn new(db: Sqlite) -> Result<Model> {
         Ok(Model {
             tables: Vec::new(),
             selected_table_id: 0,
@@ -104,9 +110,9 @@ impl Model {
                 async move {
                     let result: Result<Table, _> = Ok::<Table, anyhow::Error>(Table {
                         name: table.clone(),
-                        columns: Self::get_columns(None, &db, &ViewState::Main).await?,
-                        rows: Self::get_rows(id + 1, &table, &db, &ViewState::Main).await?,
-                        schema: Some(db.table_schema(table.as_str()).await?),
+                        columns: Self::columns(None, &db, &ViewState::Main).await?,
+                        rows: Self::rows(id + 1, &table, &db, &ViewState::Main).await?,
+                        schema: db.table_schema(table.as_str()).await?,
                     });
                     result
                 }
@@ -114,67 +120,32 @@ impl Model {
             .collect();
         let items: Vec<Result<Table, _>> = futures::future::join_all(items_future).await;
         self.tables = items.into_iter().collect::<Result<Vec<Table>>>()?;
-        self.scroll_state = ScrollbarState::new(self.tables.len() - 1);
+        self.scroll_state =
+            ScrollbarState::new(self.tables.len().checked_sub(1).unwrap_or_default());
 
         Ok(())
-    }
-
-    pub async fn get_columns(
-        name: Option<&str>,
-        db: &Arc<Sqlite>,
-        view: &ViewState,
-    ) -> Result<Vec<String>> {
-        match view {
-            ViewState::Main => Ok(vec!["#", "Table", "Columns", "Rows"]
-                .into_iter()
-                .map(String::from)
-                .collect()),
-            ViewState::Table => db.table_columns(name.unwrap()).await,
-        }
-    }
-
-    pub async fn get_rows(
-        id: usize,
-        table: &str,
-        db: &Arc<Sqlite>,
-        view: &ViewState,
-    ) -> Result<Vec<Vec<Value>>> {
-        match view {
-            ViewState::Main => {
-                let columns = db.table_columns(table).await?;
-                let rows = db.get_rows("*", table).await?;
-                let len = rows.len();
-
-                Ok(vec![vec![
-                    Value::from(id.to_string()),
-                    Value::from(table.to_string()),
-                    Value::from(columns.len().to_string()),
-                    Value::from(len.to_string()),
-                ]]
-                .into_iter()
-                .collect())
-            }
-            ViewState::Table => db.get_rows("*", table).await,
-        }
     }
 
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => match self.view_state {
                 ViewState::Main => {
-                    if i >= self.tables.len() - 1 {
+                    if i >= self.tables.len().checked_sub(1).unwrap_or(0) {
                         0
                     } else {
                         i + 1
                     }
                 }
-                ViewState::Table => {
-                    if i >= self.tables[self.selected_table_id].rows.len() - 1 {
-                        0
-                    } else {
-                        i + 1
+                ViewState::Table => match self.tables.get(self.selected_table_id) {
+                    Some(table) => {
+                        if i >= table.rows().len().checked_sub(1).unwrap_or(0) {
+                            0
+                        } else {
+                            i + 1
+                        }
                     }
-                }
+                    None => 0,
+                },
             },
             None => 0,
         };
@@ -187,18 +158,21 @@ impl Model {
             Some(i) => match self.view_state {
                 ViewState::Main => {
                     if i == 0 {
-                        self.tables.len() - 1
+                        self.tables.len().checked_sub(1).unwrap_or(0)
                     } else {
                         i - 1
                     }
                 }
-                ViewState::Table => {
-                    if i == 0 {
-                        self.tables[self.selected_table_id].rows.len() - 1
-                    } else {
-                        i - 1
+                ViewState::Table => match self.tables.get(self.selected_table_id) {
+                    Some(table) => {
+                        if i == 0 {
+                            table.rows().len().checked_sub(1).unwrap_or(0)
+                        } else {
+                            i - 1
+                        }
                     }
-                }
+                    None => 0,
+                },
             },
             None => 0,
         };
@@ -214,17 +188,20 @@ impl Model {
             self.selected_table_id = self.state.selected().unwrap_or(0);
             self.state = TableState::default().with_selected(0);
             self.view_state = ViewState::Table;
+
             for i in 0..self.tables.len() {
-                self.tables[i].rows =
-                    Self::get_rows(i + 1, &self.tables[i].name, &self.db, &ViewState::Table)
-                        .await?;
-                self.tables[i].columns =
-                    Self::get_columns(Some(&self.tables[i].name), &self.db, &ViewState::Table)
-                        .await?;
+                if let Some(table) = self.tables.get_mut(i) {
+                    table.rows =
+                        Self::rows(i + 1, &table.name, &self.db, &ViewState::Table).await?;
+                    table.columns =
+                        Self::columns(Some(&table.name), &self.db, &ViewState::Table).await?;
+                }
             }
-            self.scroll_state = ScrollbarState::new(
-                (self.tables[self.selected_table_id].rows.len() - 1) * ITEM_HEIGHT,
-            );
+
+            if let Some(selected_table) = self.tables.get(self.selected_table_id) {
+                self.scroll_state =
+                    ScrollbarState::new((selected_table.rows().len() - 1) * ITEM_HEIGHT);
+            }
         }
         Ok(())
     }
@@ -237,16 +214,16 @@ impl Model {
                 .state
                 .selected()
                 .unwrap_or(0)
-                .min(self.tables.len() - 1);
+                .min(self.tables.len().checked_sub(1).unwrap_or(0));
             self.state = TableState::default().with_selected(0);
             self.view_state = ViewState::Main;
             for i in 0..self.tables.len() {
                 self.tables[i].rows =
-                    Self::get_rows(i + 1, &self.tables[i].name, &self.db, &ViewState::Main).await?;
-                self.tables[i].columns =
-                    Self::get_columns(None, &self.db, &ViewState::Main).await?;
+                    Self::rows(i + 1, &self.tables[i].name, &self.db, &ViewState::Main).await?;
+                self.tables[i].columns = Self::columns(None, &self.db, &ViewState::Main).await?;
             }
-            self.scroll_state = ScrollbarState::new((self.tables.len() - 1) * ITEM_HEIGHT);
+            self.scroll_state =
+                ScrollbarState::new((self.tables.len().checked_sub(1).unwrap_or(0)) * ITEM_HEIGHT);
         }
         Ok(())
     }
@@ -255,50 +232,71 @@ impl Model {
         &self.tables
     }
 
-    pub fn table_schema(&self) -> &Option<String> {
-        &self.tables[self.state.selected().unwrap_or(0)].schema
+    pub fn table_schema(&self) -> Option<&str> {
+        self.tables
+            .get(self.selected_table_id)
+            .map(|table| table.schema())
     }
 
     pub fn get_table_columns(&self) -> &[String] {
-        &self.tables[self.selected_table_id].columns
+        self.tables
+            .get(self.selected_table_id)
+            .map(|table| table.columns.as_slice())
+            .unwrap_or(&[])
     }
 
-    pub fn get_table_rows(&self) -> &[Vec<Value>] {
-        &self.tables[self.selected_table_id].rows
+    pub fn get_table_rows(&self) -> Vec<&[Value]> {
+        self.tables
+            .get(self.selected_table_id)
+            .map(|table| {
+                table
+                    .rows()
+                    .iter()
+                    .map(|row| row.as_slice())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| vec![&[]])
     }
 
-    pub fn get_longest_in_column(&self) -> u16 {
+    pub fn longest_in_column(&self) -> u16 {
         const WIDTH_PERCENTAGE: f32 = 1.1;
-        let longest_row = self.tables[self.selected_table_id]
-            .rows
-            .iter()
-            .map(|row| row[self.active_column].as_str().unwrap().len())
-            .max()
-            .unwrap_or(0);
 
-        let longest_column = self.tables[self.selected_table_id].columns[self.active_column]
-            .as_str()
-            .len();
-        (longest_row.max(longest_column) as f32 * WIDTH_PERCENTAGE) as u16
+        if let Some(table) = self.tables.get(self.selected_table_id) {
+            if let Some(active_column_index) = table.columns.get(self.active_column) {
+                let longest_row = table
+                    .rows()
+                    .iter()
+                    .filter_map(|row| row.get(self.active_column))
+                    .filter_map(|value| value.as_str().map(|s| s.len()))
+                    .max()
+                    .unwrap_or(0);
+
+                let longest_column = active_column_index.as_str().len();
+
+                return (longest_row.max(longest_column) as f32 * WIDTH_PERCENTAGE) as u16;
+            }
+        }
+
+        0
     }
 
-    pub fn get_view_state(&self) -> ViewState {
+    pub fn view_state(&self) -> ViewState {
         self.view_state.clone()
     }
 
-    pub fn get_colors(&self) -> &TableColors {
+    pub fn colors(&self) -> &TableColors {
         &self.colors
     }
 
-    pub fn get_selected_table_id(&self) -> usize {
+    pub fn selected_table_id(&self) -> usize {
         self.selected_table_id
     }
 
-    pub fn get_state(&self) -> &TableState {
+    pub fn state(&self) -> &TableState {
         &self.state
     }
 
-    pub fn get_scroll_state(&self) -> &ScrollbarState {
+    pub fn scroll_state(&self) -> &ScrollbarState {
         &self.scroll_state
     }
 
@@ -326,15 +324,21 @@ impl Model {
 
     pub fn next_column(&mut self) {
         if self.is_column_enabled() {
-            self.active_column =
-                (self.active_column + 1) % self.tables[self.selected_table_id].columns.len();
+            self.active_column = (self.active_column + 1)
+                % self
+                    .tables
+                    .get(self.selected_table_id)
+                    .map_or(0, |table| table.columns.len());
         }
     }
 
     pub fn previous_column(&mut self) {
         if self.is_column_enabled() {
             self.active_column = if self.active_column == 0 {
-                self.tables[self.selected_table_id].columns.len() - 1
+                self.tables
+                    .get(self.selected_table_id)
+                    .map_or(0, |table| table.columns.len())
+                    - 1
             } else {
                 self.active_column - 1
             };
@@ -358,5 +362,228 @@ impl Model {
         }
 
         result
+    }
+
+    async fn columns(name: Option<&str>, db: &Sqlite, view: &ViewState) -> Result<Vec<String>> {
+        match view {
+            ViewState::Main => Ok(vec!["#", "Table", "Columns", "Rows"]
+                .into_iter()
+                .map(String::from)
+                .collect()),
+            ViewState::Table => db.table_columns(name.unwrap()).await,
+        }
+    }
+
+    async fn rows(
+        id: usize,
+        table: &str,
+        db: &Sqlite,
+        view: &ViewState,
+    ) -> Result<Vec<Vec<Value>>> {
+        match view {
+            ViewState::Main => {
+                let columns = db.table_columns(table).await?;
+                let rows = db.get_rows("*", table).await?;
+                let len = rows.len();
+
+                Ok(vec![vec![
+                    Value::from(id.to_string()),
+                    Value::from(table.to_string()),
+                    Value::from(columns.len().to_string()),
+                    Value::from(len.to_string()),
+                ]]
+                .into_iter()
+                .collect())
+            }
+            ViewState::Table => db.get_rows("*", table).await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn initialize_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        assert!(!model.is_schema_enabled());
+        assert!(!model.is_column_enabled());
+        assert_eq!(model.tables().len(), 0);
+        assert_eq!(model.view_state(), ViewState::Main);
+        assert_eq!(model.selected_table_id(), 0);
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.colors(), &TableColors::new(&tailwind::TEAL));
+        assert_eq!(model.longest_in_column(), 0);
+        assert_eq!(model.active_column(), 0);
+    }
+
+    #[tokio::test]
+    async fn initialize_table_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        model.switch_to_table_view().await.unwrap();
+        assert_eq!(model.view_state(), ViewState::Table);
+        assert_eq!(model.selected_table_id(), 0);
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.colors(), &TableColors::new(&tailwind::TEAL));
+        assert_eq!(model.longest_in_column(), 0);
+        assert!(!model.is_schema_enabled());
+        assert!(!model.is_column_enabled());
+    }
+
+    #[tokio::test]
+    async fn main_view_empty_next() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.next();
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+    }
+
+    #[tokio::test]
+    async fn table_view_empty_next() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        model.next();
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+    }
+
+    #[tokio::test]
+    async fn main_view_empty_previous() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.previous();
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+    }
+
+    #[tokio::test]
+    async fn table_view_empty_previous() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        model.previous();
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+    }
+
+    #[tokio::test]
+    async fn switch_to_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        assert_eq!(model.view_state(), ViewState::Table);
+        assert_eq!(model.selected_table_id(), 0);
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.colors(), &TableColors::new(&tailwind::TEAL));
+        assert_eq!(model.longest_in_column(), 0);
+        model.switch_to_main_view().await.unwrap();
+        assert_eq!(model.view_state(), ViewState::Main);
+        assert_eq!(model.selected_table_id(), 0);
+        assert_eq!(model.state().selected(), Some(0));
+        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.colors(), &TableColors::new(&tailwind::TEAL));
+        assert_eq!(model.longest_in_column(), 0);
+    }
+
+    #[tokio::test]
+    async fn toggle_schema_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        assert!(!model.is_schema_enabled());
+        model.toggle_schema();
+        assert!(model.is_schema_enabled());
+    }
+
+    #[tokio::test]
+    async fn toggle_schema_table_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        assert!(!model.is_schema_enabled());
+        model.toggle_schema();
+        assert!(!model.is_schema_enabled());
+    }
+
+    #[tokio::test]
+    async fn toggle_column_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        assert!(!model.is_column_enabled());
+        model.toggle_column();
+        assert!(model.is_column_enabled());
+    }
+
+    #[tokio::test]
+    async fn toggle_column_table_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        assert!(!model.is_column_enabled());
+        model.toggle_column();
+        assert!(model.is_column_enabled());
+    }
+
+    #[tokio::test]
+    async fn info_text_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        assert_eq!(
+            model.get_info_text(),
+            "(Esc) quit | (↑) move up | (↓) move down | (⇧ S) toggle column select | (Space) toggle schema (→) table view"
+        );
+    }
+    #[tokio::test]
+    async fn info_text_with_column_main_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.toggle_column();
+        assert_eq!(
+            model.get_info_text(),
+            "(Esc) quit | (↑) move up | (↓) move down | (⇧ S) toggle column select | (Space) toggle schema (→) table view | (⇧ ←) previous column | (⇧ →) next column"
+        );
+    }
+
+    #[tokio::test]
+    async fn info_text_table_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        assert_eq!(
+            model.get_info_text(),
+            "(Esc) quit | (↑) move up | (↓) move down | (⇧ S) toggle column select | (←) main view"
+        );
+    }
+
+    #[tokio::test]
+    async fn info_text_column_table_view() {
+        let db = Sqlite::new().await.unwrap();
+        let mut model = Model::new(db).unwrap();
+        assert!(model.initialize().await.is_ok());
+        model.switch_to_table_view().await.unwrap();
+        model.toggle_column();
+        assert_eq!(
+            model.get_info_text(),
+            "(Esc) quit | (↑) move up | (↓) move down | (⇧ S) toggle column select | (←) main view | (⇧ ←) previous column | (⇧ →) next column"
+        );
     }
 }
