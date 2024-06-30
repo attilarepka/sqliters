@@ -2,6 +2,8 @@
 
 **sqliters is a TUI application, which allows you to browse SQLite databases directly from the terminal.**
 
+[![Build status](https://github.com/attilarepka/sqliters/actions/workflows/tests.yml/badge.svg)](https://github.com/attilarepka/sqliters/actions)
+
 Built with [ratatui](https://github.com/ratatui-org/ratatui).
 
 ## Demo
@@ -17,7 +19,7 @@ https://github.com/attilarepka/sqliters/assets/39063661/45971711-277f-4fbb-8d22-
 
 ## Contributing
 
-Open a GitHub issue or pull request.
+Contributions are welcome! Open a GitHub issue or pull request.
 
 ## License
 
