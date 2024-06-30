@@ -33,13 +33,13 @@ impl UserInterface {
     }
 
     fn render_table(&self, frame: &mut Frame, model: &Model, area: Rect) {
-        let header_style = Style::default().bg(model.get_colors().header_bg);
+        let header_style = Style::default().bg(model.colors().header_bg);
         let selected_style = Style::default()
             .add_modifier(Modifier::REVERSED)
-            .fg(model.get_colors().selected_style_fg);
+            .fg(model.colors().selected_style_fg);
         let highlight_column_style = Style::default()
             .add_modifier(Modifier::REVERSED)
-            .fg(model.get_colors().highlight_column_fg);
+            .fg(model.colors().highlight_column_fg);
 
         let cells = model
             .get_table_columns()
@@ -47,17 +47,17 @@ impl UserInterface {
             .enumerate()
             .map(|(i, header)| {
                 let header_style = if model.is_column_enabled() && i == model.active_column() {
-                    Style::default().fg(model.get_colors().header_fg)
+                    Style::default().fg(model.colors().header_fg)
                 } else {
-                    Style::default().fg(model.get_colors().selected_style_fg)
+                    Style::default().fg(model.colors().selected_style_fg)
                 };
 
                 Cell::from(Text::from(header.clone()).centered()).style(header_style)
             });
         let header = Row::new(cells).style(header_style).height(1);
 
-        let mut table_state = model.get_state().clone();
-        let rows = match model.get_view_state() {
+        let mut table_state = model.state().clone();
+        let rows = match model.view_state() {
             ViewState::Main => {
                 let mut row_index = 0;
                 model
@@ -69,9 +69,9 @@ impl UserInterface {
                             .iter()
                             .map(|row| {
                                 let color = if row_index % 2 == 0 {
-                                    model.get_colors().normal_row_color
+                                    model.colors().normal_row_color
                                 } else {
-                                    model.get_colors().alt_row_color
+                                    model.colors().alt_row_color
                                 };
                                 row_index += 1;
                                 let cells = row.iter().enumerate().map(|(i, cell)| {
@@ -80,7 +80,7 @@ impl UserInterface {
                                     {
                                         highlight_column_style
                                     } else {
-                                        Style::default().fg(model.get_colors().row_fg).bg(color)
+                                        Style::default().fg(model.colors().row_fg).bg(color)
                                     };
                                     Cell::from(
                                         Text::from(format!("\n{}\n", cell.as_str().unwrap()))
@@ -89,7 +89,7 @@ impl UserInterface {
                                     .style(cell_style)
                                 });
                                 Row::new(cells)
-                                    .style(Style::default().fg(model.get_colors().row_fg).bg(color))
+                                    .style(Style::default().fg(model.colors().row_fg).bg(color))
                                     .height(ITEM_HEIGHT as u16)
                             })
                             .collect::<Vec<_>>()
@@ -97,7 +97,7 @@ impl UserInterface {
                     .collect()
             }
             ViewState::Table => {
-                let index = model.get_state().selected().unwrap_or(0);
+                let index = model.state().selected().unwrap_or(0);
                 let page = index / MAX_TABLE_ITEMS;
                 table_state.select(Some(index % MAX_TABLE_ITEMS));
 
@@ -109,16 +109,16 @@ impl UserInterface {
                     .take(MAX_TABLE_ITEMS)
                     .map(|(row_index, row)| {
                         let color = if row_index % 2 == 0 {
-                            model.get_colors().normal_row_color
+                            model.colors().normal_row_color
                         } else {
-                            model.get_colors().alt_row_color
+                            model.colors().alt_row_color
                         };
                         let cells = row.iter().enumerate().map(|(i, cell)| {
                             let cell_style =
                                 if model.is_column_enabled() && i == model.active_column() {
                                     highlight_column_style
                                 } else {
-                                    Style::default().fg(model.get_colors().row_fg).bg(color)
+                                    Style::default().fg(model.colors().row_fg).bg(color)
                                 };
                             Cell::from(
                                 Text::from(format!("\n{}\n", cell.as_str().unwrap())).centered(),
@@ -126,7 +126,7 @@ impl UserInterface {
                             .style(cell_style)
                         });
                         Row::new(cells)
-                            .style(Style::default().fg(model.get_colors().row_fg).bg(color))
+                            .style(Style::default().fg(model.colors().row_fg).bg(color))
                             .height(ITEM_HEIGHT as u16)
                     })
                     .collect::<Vec<_>>()
@@ -136,7 +136,7 @@ impl UserInterface {
         let constraints: Vec<_> = (0..model.get_table_columns().len())
             .map(|column| {
                 if model.is_column_enabled() && column == model.active_column() {
-                    Constraint::Min(model.get_longest_in_column())
+                    Constraint::Min(model.longest_in_column())
                 } else {
                     Constraint::Min(5)
                 }
@@ -152,7 +152,7 @@ impl UserInterface {
                 bar.into(),
                 "".into(),
             ]))
-            .bg(model.get_colors().buffer_bg)
+            .bg(model.colors().buffer_bg)
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_stateful_widget(t, area, &mut table_state);
     }
@@ -167,7 +167,7 @@ impl UserInterface {
                 vertical: 1,
                 horizontal: 1,
             }),
-            &mut model.get_scroll_state().clone(),
+            &mut model.scroll_state().clone(),
         );
     }
 
@@ -175,14 +175,14 @@ impl UserInterface {
         let info_footer = Paragraph::new(model.get_info_text())
             .style(
                 Style::new()
-                    .fg(model.get_colors().row_fg)
-                    .bg(model.get_colors().buffer_bg),
+                    .fg(model.colors().row_fg)
+                    .bg(model.colors().buffer_bg),
             )
             .centered()
             .block(
                 Block::bordered()
                     .border_type(BorderType::Double)
-                    .border_style(Style::new().fg(model.get_colors().footer_border_color)),
+                    .border_style(Style::new().fg(model.colors().footer_border_color)),
             );
         frame.render_widget(info_footer, area);
     }
@@ -208,3 +208,8 @@ impl UserInterface {
         frame.render_widget(popup, popup_area);
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+// }

@@ -6,7 +6,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
-use std::{io, sync::Arc};
+use std::io;
 
 #[derive(Debug)]
 pub struct App {
@@ -19,9 +19,9 @@ impl App {
     pub async fn new() -> Result<App> {
         let args = Args::from().await;
 
-        let db = Arc::new(Sqlite::from(&args.input_file, false).await?);
+        let db = Sqlite::from(&args.input_file, false).await?;
 
-        let mut model = Model::new(db.clone())?;
+        let mut model = Model::new(db)?;
         model.initialize().await?;
 
         Ok(App {
