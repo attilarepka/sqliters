@@ -234,7 +234,7 @@ impl Model {
 
     pub fn table_schema(&self) -> Option<&str> {
         self.tables
-            .get(self.selected_table_id)
+            .get(self.state.selected().unwrap_or(0))
             .map(|table| table.schema())
     }
 
@@ -404,20 +404,37 @@ impl Model {
 mod tests {
     use super::*;
 
+    async fn create_test_db() -> Sqlite {
+        let db = Sqlite::new().await.unwrap();
+        db.create_table("test", format!("{} INTEGER", "id").as_str())
+            .await
+            .unwrap();
+        db.insert_rows("test", "id", &vec!["1", "2", "3"])
+            .await
+            .unwrap();
+        db.create_table("test2", format!("{} INTEGER", "id").as_str())
+            .await
+            .unwrap();
+        db.insert_rows("test2", "id", &vec!["1", "2", "3"])
+            .await
+            .unwrap();
+        db
+    }
+
     #[tokio::test]
     async fn initialize_main_view() {
-        let db = Sqlite::new().await.unwrap();
+        let db = create_test_db().await;
         let mut model = Model::new(db).unwrap();
         assert!(model.initialize().await.is_ok());
         assert!(!model.is_schema_enabled());
         assert!(!model.is_column_enabled());
-        assert_eq!(model.tables().len(), 0);
+        assert_eq!(model.tables().len(), 2);
         assert_eq!(model.view_state(), ViewState::Main);
         assert_eq!(model.selected_table_id(), 0);
         assert_eq!(model.state().selected(), Some(0));
-        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.scroll_state(), &ScrollbarState::new(1));
         assert_eq!(model.colors(), &TableColors::new(&tailwind::TEAL));
-        assert_eq!(model.longest_in_column(), 0);
+        assert_eq!(model.longest_in_column(), 1);
         assert_eq!(model.active_column(), 0);
     }
 
@@ -437,45 +454,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn main_view_empty_next() {
-        let db = Sqlite::new().await.unwrap();
+    async fn main_view_next() {
+        let db = create_test_db().await;
         let mut model = Model::new(db).unwrap();
         assert!(model.initialize().await.is_ok());
         model.next();
-        assert_eq!(model.state().selected(), Some(0));
-        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.state().selected(), Some(1));
+        assert_eq!(model.scroll_state(), &ScrollbarState::new(1).position(4));
     }
 
     #[tokio::test]
-    async fn table_view_empty_next() {
-        let db = Sqlite::new().await.unwrap();
+    async fn table_view_next() {
+        let db = create_test_db().await;
         let mut model = Model::new(db).unwrap();
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         model.next();
-        assert_eq!(model.state().selected(), Some(0));
-        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.state().selected(), Some(1));
+        assert_eq!(model.scroll_state(), &ScrollbarState::new(8).position(4));
     }
 
     #[tokio::test]
-    async fn main_view_empty_previous() {
-        let db = Sqlite::new().await.unwrap();
+    async fn main_view_previous() {
+        let db = create_test_db().await;
         let mut model = Model::new(db).unwrap();
         assert!(model.initialize().await.is_ok());
         model.previous();
-        assert_eq!(model.state().selected(), Some(0));
-        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.state().selected(), Some(1));
+        assert_eq!(model.scroll_state(), &ScrollbarState::new(1).position(4));
     }
 
     #[tokio::test]
-    async fn table_view_empty_previous() {
-        let db = Sqlite::new().await.unwrap();
+    async fn table_view_previous() {
+        let db = create_test_db().await;
         let mut model = Model::new(db).unwrap();
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         model.previous();
-        assert_eq!(model.state().selected(), Some(0));
-        assert_eq!(model.scroll_state(), &ScrollbarState::default());
+        assert_eq!(model.state().selected(), Some(2));
+        assert_eq!(model.scroll_state(), &ScrollbarState::new(8).position(8));
     }
 
     #[tokio::test]

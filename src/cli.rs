@@ -10,7 +10,7 @@ pub struct Args {
 }
 
 impl Args {
-    pub async fn from() -> Args {
+    pub fn from() -> Args {
         Args::parse()
     }
 }
