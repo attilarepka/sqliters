@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::{cli::Args, db::Sqlite, model::Model, ui::UserInterface};
+use crate::{db::Sqlite, model::Model, ui::UserInterface};
 use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -16,11 +16,7 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new() -> Result<App> {
-        let args = Args::from().await;
-
-        let db = Sqlite::from(&args.input_file, false).await?;
-
+    pub async fn new(db: Sqlite) -> Result<App> {
         let mut model = Model::new(db)?;
         model.initialize().await?;
 
@@ -133,5 +129,89 @@ impl App {
         crossterm::execute!(io::stdout(), LeaveAlternateScreen)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::ViewState;
+
+    use super::*;
+
+    async fn create_test_db() -> Sqlite {
+        let db = Sqlite::new().await.unwrap();
+        db.create_table("test", format!("{} INTEGER", "id").as_str())
+            .await
+            .unwrap();
+        db.insert_rows("test", "id", &vec!["1", "2", "3"])
+            .await
+            .unwrap();
+        db.create_table("test2", format!("{} INTEGER", "id").as_str())
+            .await
+            .unwrap();
+        db.insert_rows("test2", "id", &vec!["1", "2", "3"])
+            .await
+            .unwrap();
+        db
+    }
+
+    #[tokio::test]
+    async fn handle_key_events() {
+        let db = create_test_db().await;
+        let mut app = App::new(db).await.unwrap();
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('q'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert!(app.exit);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('j'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert_eq!(app.model.state().selected().unwrap(), 1);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('k'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert_eq!(app.model.state().selected().unwrap(), 0);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('l'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert_eq!(app.model.view_state(), ViewState::Table);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('h'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert_eq!(app.model.view_state(), ViewState::Main);
+
+        app.handle_key_event(KeyEvent::new(KeyCode::Char('s'), event::KeyModifiers::NONE))
+            .await
+            .unwrap();
+        assert!(app.model.is_schema_enabled());
+
+        app.handle_key_event(KeyEvent::new(
+            KeyCode::Char('S'),
+            event::KeyModifiers::SHIFT,
+        ))
+        .await
+        .unwrap();
+        assert!(app.model.is_column_enabled());
+
+        app.handle_key_event(KeyEvent::new(
+            KeyCode::Char('L'),
+            event::KeyModifiers::SHIFT,
+        ))
+        .await
+        .unwrap();
+        assert_eq!(app.model.active_column(), 1);
+
+        app.handle_key_event(KeyEvent::new(
+            KeyCode::Char('H'),
+            event::KeyModifiers::SHIFT,
+        ))
+        .await
+        .unwrap();
+        assert_eq!(app.model.active_column(), 0);
     }
 }
