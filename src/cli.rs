@@ -4,9 +4,9 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about = "sqliters", long_about = None)]
 pub struct Args {
-    /// Input archive file
+    /// Input sqlite file
     #[clap(long, short)]
-    pub input_file: String,
+    pub input: String,
 }
 
 impl Args {
