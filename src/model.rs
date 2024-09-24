@@ -61,7 +61,7 @@ impl Table {
         &self.rows
     }
     pub fn schema(&self) -> &str {
-        &self.schema.as_str()
+        self.schema.as_str()
     }
 }
 
@@ -130,7 +130,7 @@ impl Model {
         let i = match self.state.selected() {
             Some(i) => match self.view_state {
                 ViewState::Main => {
-                    if i >= self.tables.len().checked_sub(1).unwrap_or(0) {
+                    if i >= self.tables.len().saturating_sub(1) {
                         0
                     } else {
                         i + 1
@@ -138,7 +138,7 @@ impl Model {
                 }
                 ViewState::Table => match self.tables.get(self.selected_table_id) {
                     Some(table) => {
-                        if i >= table.rows().len().checked_sub(1).unwrap_or(0) {
+                        if i >= table.rows().len().saturating_sub(1) {
                             0
                         } else {
                             i + 1
@@ -158,7 +158,7 @@ impl Model {
             Some(i) => match self.view_state {
                 ViewState::Main => {
                     if i == 0 {
-                        self.tables.len().checked_sub(1).unwrap_or(0)
+                        self.tables.len().saturating_sub(1)
                     } else {
                         i - 1
                     }
@@ -166,7 +166,7 @@ impl Model {
                 ViewState::Table => match self.tables.get(self.selected_table_id) {
                     Some(table) => {
                         if i == 0 {
-                            table.rows().len().checked_sub(1).unwrap_or(0)
+                            table.rows().len().saturating_sub(1)
                         } else {
                             i - 1
                         }
@@ -214,7 +214,7 @@ impl Model {
                 .state
                 .selected()
                 .unwrap_or(0)
-                .min(self.tables.len().checked_sub(1).unwrap_or(0));
+                .min(self.tables.len().saturating_sub(1));
             self.state = TableState::default().with_selected(0);
             self.view_state = ViewState::Main;
             for i in 0..self.tables.len() {
@@ -223,7 +223,7 @@ impl Model {
                 self.tables[i].columns = Self::columns(None, &self.db, &ViewState::Main).await?;
             }
             self.scroll_state =
-                ScrollbarState::new((self.tables.len().checked_sub(1).unwrap_or(0)) * ITEM_HEIGHT);
+                ScrollbarState::new(self.tables.len().saturating_sub(1) * ITEM_HEIGHT);
         }
         Ok(())
     }

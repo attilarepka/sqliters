@@ -141,7 +141,7 @@ impl Sqlite {
             .into_iter()
             .map(|row| {
                 row.columns()
-                    .into_iter()
+                    .iter()
                     .map(|column| {
                         let ordinal = column.ordinal();
                         let type_name = column.type_info().name();

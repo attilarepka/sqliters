@@ -38,7 +38,7 @@ impl App {
         let mut terminal = Self::init_terminal()?;
 
         while !self.exit {
-            terminal.draw(|frame| self.ui.run(frame, &mut self.model))?;
+            terminal.draw(|frame| self.ui.run(frame, &self.model))?;
             self.handle_events().await?;
         }
 
