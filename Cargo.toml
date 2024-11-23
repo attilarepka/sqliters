@@ -19,5 +19,5 @@ futures = "0.3.30"
 hex = "0.4.3"
 ratatui = "0.26.3"
 serde_json = "1.0.117"
-sqlx = { version = "0.8.1", features = ["sqlite", "runtime-tokio"] }
+sqlx = { version = "0.8.2", features = ["sqlite", "runtime-tokio"] }
 tokio = { version = "1.37.0", features = ["full"] }
