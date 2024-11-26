@@ -6,8 +6,8 @@ use ratatui::text::Text;
 use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Modifier, Style, Stylize},
-    terminal::Frame,
     widgets::*,
+    Frame,
 };
 
 #[derive(Debug, Default)]
@@ -21,7 +21,7 @@ impl UserInterface {
     pub fn run(&self, frame: &mut Frame, model: &Model) {
         let schema = model.is_schema_enabled();
         let rects =
-            Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(frame.size());
+            Layout::vertical([Constraint::Min(5), Constraint::Length(3)]).split(frame.area());
 
         self.render_table(frame, model, rects[0]);
 
@@ -145,7 +145,7 @@ impl UserInterface {
         let bar = " █ ";
         let t = Table::new(rows, constraints)
             .header(header)
-            .highlight_style(selected_style)
+            .row_highlight_style(selected_style)
             .highlight_symbol(Text::from(vec![
                 "".into(),
                 bar.into(),
@@ -163,7 +163,7 @@ impl UserInterface {
                 .orientation(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(None)
                 .end_symbol(None),
-            area.inner(&Margin {
+            area.inner(Margin {
                 vertical: 1,
                 horizontal: 1,
             }),
@@ -191,7 +191,7 @@ impl UserInterface {
         if !schema {
             return;
         }
-        let area = frame.size();
+        let area = frame.area();
         let popup_area = Rect {
             x: area.width / 4,
             y: area.height / 4,
@@ -208,8 +208,3 @@ impl UserInterface {
         frame.render_widget(popup, popup_area);
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-// }
