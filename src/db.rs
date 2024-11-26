@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde_json::{json, Value};
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteRow},
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     Column, QueryBuilder, Row, SqlitePool, TypeInfo,
 };
 
@@ -14,8 +14,12 @@ pub struct Sqlite {
 
 impl Sqlite {
     pub async fn new() -> Result<Sqlite> {
+        let sqlite_opts = SqliteConnectOptions::new().in_memory(true);
         Ok(Sqlite {
-            pool: SqlitePool::connect(":memory:").await?,
+            pool: SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(sqlite_opts)
+                .await?,
         })
     }
 
