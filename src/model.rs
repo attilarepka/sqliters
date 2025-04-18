@@ -1,12 +1,15 @@
 #![allow(dead_code)]
 use crate::db::Sqlite;
 use anyhow::Result;
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{
+    prelude::*,
+    widgets::{ScrollbarState, TableState},
+};
 use serde_json::Value;
 use style::palette::tailwind;
 use style::Color;
 
-pub const ITEM_HEIGHT: usize = 4;
+pub const ITEM_HEIGHT: u16 = 4;
 pub const MAX_TABLE_ITEMS: usize = 100;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,8 +89,8 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(db: Sqlite) -> Result<Model> {
-        Ok(Model {
+    pub fn new(db: Sqlite) -> Model {
+        Model {
             tables: Vec::new(),
             selected_table_id: 0,
             state: TableState::default().with_selected(0),
@@ -98,7 +101,7 @@ impl Model {
             schema: false,
             column: false,
             db,
-        })
+        }
     }
     pub async fn initialize(&mut self) -> Result<()> {
         let tables = self.db.tables().await?;
@@ -150,7 +153,7 @@ impl Model {
             None => 0,
         };
         self.state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT as usize);
     }
 
     pub fn previous(&mut self) {
@@ -177,7 +180,7 @@ impl Model {
             None => 0,
         };
         self.state.select(Some(i));
-        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+        self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT as usize);
     }
 
     pub async fn switch_to_table_view(&mut self) -> Result<()> {
@@ -200,7 +203,7 @@ impl Model {
 
             if let Some(selected_table) = self.tables.get(self.selected_table_id) {
                 self.scroll_state =
-                    ScrollbarState::new((selected_table.rows().len() - 1) * ITEM_HEIGHT);
+                    ScrollbarState::new((selected_table.rows().len() - 1) * ITEM_HEIGHT as usize);
             }
         }
         Ok(())
@@ -223,7 +226,7 @@ impl Model {
                 self.tables[i].columns = Self::columns(None, &self.db, &ViewState::Main).await?;
             }
             self.scroll_state =
-                ScrollbarState::new(self.tables.len().saturating_sub(1) * ITEM_HEIGHT);
+                ScrollbarState::new(self.tables.len().saturating_sub(1) * ITEM_HEIGHT as usize);
         }
         Ok(())
     }
@@ -235,48 +238,38 @@ impl Model {
     pub fn table_schema(&self) -> Option<&str> {
         self.tables
             .get(self.state.selected().unwrap_or(0))
-            .map(|table| table.schema())
+            .map(Table::schema)
     }
 
     pub fn get_table_columns(&self) -> &[String] {
         self.tables
             .get(self.selected_table_id)
-            .map(|table| table.columns.as_slice())
-            .unwrap_or(&[])
+            .map_or(&[], |table| table.columns.as_slice())
     }
 
     pub fn get_table_rows(&self) -> Vec<&[Value]> {
-        self.tables
-            .get(self.selected_table_id)
-            .map(|table| {
-                table
-                    .rows()
-                    .iter()
-                    .map(|row| row.as_slice())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| vec![&[]])
+        self.tables.get(self.selected_table_id).map_or_else(
+            || vec![&[] as &[Value]],
+            |table| table.rows().iter().map(Vec::as_slice).collect(),
+        )
     }
 
     pub fn longest_in_column(&self) -> u16 {
-        const WIDTH_PERCENTAGE: f32 = 1.1;
-
         if let Some(table) = self.tables.get(self.selected_table_id) {
             if let Some(active_column_index) = table.columns.get(self.active_column) {
                 let longest_row = table
                     .rows()
                     .iter()
                     .filter_map(|row| row.get(self.active_column))
-                    .filter_map(|value| value.as_str().map(|s| s.len()))
+                    .filter_map(|value| value.as_str().map(str::len))
                     .max()
                     .unwrap_or(0);
 
                 let longest_column = active_column_index.as_str().len();
 
-                return (longest_row.max(longest_column) as f32 * WIDTH_PERCENTAGE) as u16;
+                return u16::try_from(longest_row.max(longest_column)).unwrap_or(0);
             }
         }
-
         0
     }
 
@@ -424,7 +417,7 @@ mod tests {
     #[tokio::test]
     async fn initialize_main_view() {
         let db = create_test_db().await;
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         assert!(!model.is_schema_enabled());
         assert!(!model.is_column_enabled());
@@ -441,7 +434,7 @@ mod tests {
     #[tokio::test]
     async fn initialize_table_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         model.switch_to_table_view().await.unwrap();
         assert_eq!(model.view_state(), ViewState::Table);
         assert_eq!(model.selected_table_id(), 0);
@@ -456,7 +449,7 @@ mod tests {
     #[tokio::test]
     async fn main_view_next() {
         let db = create_test_db().await;
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.next();
         assert_eq!(model.state().selected(), Some(1));
@@ -466,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn table_view_next() {
         let db = create_test_db().await;
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         model.next();
@@ -477,7 +470,7 @@ mod tests {
     #[tokio::test]
     async fn main_view_previous() {
         let db = create_test_db().await;
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.previous();
         assert_eq!(model.state().selected(), Some(1));
@@ -487,7 +480,7 @@ mod tests {
     #[tokio::test]
     async fn table_view_previous() {
         let db = create_test_db().await;
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         model.previous();
@@ -498,7 +491,7 @@ mod tests {
     #[tokio::test]
     async fn switch_to_main_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         assert_eq!(model.view_state(), ViewState::Table);
@@ -519,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_schema_main_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         assert!(!model.is_schema_enabled());
         model.toggle_schema();
@@ -529,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_schema_table_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         assert!(!model.is_schema_enabled());
@@ -540,7 +533,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_column_main_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         assert!(!model.is_column_enabled());
         model.toggle_column();
@@ -550,7 +543,7 @@ mod tests {
     #[tokio::test]
     async fn toggle_column_table_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         assert!(!model.is_column_enabled());
         model.toggle_column();
@@ -560,7 +553,7 @@ mod tests {
     #[tokio::test]
     async fn info_text_main_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         assert_eq!(
             model.get_info_text(),
@@ -570,7 +563,7 @@ mod tests {
     #[tokio::test]
     async fn info_text_with_column_main_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.toggle_column();
         assert_eq!(
@@ -582,7 +575,7 @@ mod tests {
     #[tokio::test]
     async fn info_text_table_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         assert_eq!(
@@ -594,7 +587,7 @@ mod tests {
     #[tokio::test]
     async fn info_text_column_table_view() {
         let db = Sqlite::new().await.unwrap();
-        let mut model = Model::new(db).unwrap();
+        let mut model = Model::new(db);
         assert!(model.initialize().await.is_ok());
         model.switch_to_table_view().await.unwrap();
         model.toggle_column();
