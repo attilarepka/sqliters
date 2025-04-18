@@ -17,11 +17,11 @@ pub struct App {
 
 impl App {
     pub async fn new(db: Sqlite) -> Result<App> {
-        let mut model = Model::new(db)?;
+        let mut model = Model::new(db);
         model.initialize().await?;
 
         Ok(App {
-            ui: UserInterface::new()?,
+            ui: UserInterface::new(),
             model,
             exit: false,
         })
@@ -84,7 +84,7 @@ impl App {
                 ..
             } => self.model.switch_to_main_view().await?,
             KeyEvent {
-                code: KeyCode::Char('s') | KeyCode::Char(' '),
+                code: KeyCode::Char('s' | ' '),
                 modifiers: event::KeyModifiers::NONE,
                 ..
             } => self.model.toggle_schema(),

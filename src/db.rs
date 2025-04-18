@@ -61,7 +61,7 @@ impl Sqlite {
     }
 
     pub async fn table_schema(&self, table: &str) -> Result<String> {
-        let query = format!("SELECT sql FROM sqlite_schema WHERE name='{}'", table);
+        let query = format!("SELECT sql FROM sqlite_schema WHERE name='{table}'");
         let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
 
         let mut result = String::new();
@@ -74,7 +74,7 @@ impl Sqlite {
     }
 
     pub async fn table_columns(&self, table: &str) -> Result<Vec<String>> {
-        let query = format!("PRAGMA table_info({})", table);
+        let query = format!("PRAGMA table_info({table})");
         let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
 
         Ok(rows
@@ -83,8 +83,8 @@ impl Sqlite {
             .collect::<Vec<String>>())
     }
 
-    pub async fn insert_rows(&self, table: &str, column: &str, rows: &Vec<&str>) -> Result<usize> {
-        let query = format!("INSERT INTO {} ({}) ", table, column);
+    pub async fn insert_rows(&self, table: &str, column: &str, rows: &Vec<&str>) -> Result<u64> {
+        let query = format!("INSERT INTO {table} ({column}) ");
         let mut query_builder = QueryBuilder::new(query.as_str());
 
         query_builder.push_values(rows, |mut query, row| {
@@ -93,40 +93,37 @@ impl Sqlite {
 
         let query = query_builder.build();
 
-        Ok(query.execute(&self.pool).await?.rows_affected() as usize)
+        Ok(query.execute(&self.pool).await?.rows_affected())
     }
 
-    pub async fn remove_row(&self, row: &str, table: &str) -> Result<usize> {
-        let query = format!("DELETE FROM {} WHERE {}", table, row);
+    pub async fn remove_row(&self, row: &str, table: &str) -> Result<u64> {
+        let query = format!("DELETE FROM {table} WHERE {row}");
         let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
-        Ok(result.rows_affected() as usize)
+        Ok(result.rows_affected())
     }
 
-    pub async fn remove_column(&self, column: &str, table: &str) -> Result<usize> {
-        let query = format!("ALTER TABLE {} DROP COLUMN {}", table, column);
+    pub async fn remove_column(&self, column: &str, table: &str) -> Result<u64> {
+        let query = format!("ALTER TABLE {table} DROP COLUMN {column}");
         let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
-        Ok(result.rows_affected() as usize)
+        Ok(result.rows_affected())
     }
 
-    pub async fn create_table(&self, name: &str, query: &str) -> Result<usize> {
-        let query = format!("CREATE TABLE {} ({})", name, query);
+    pub async fn create_table(&self, name: &str, query: &str) -> Result<u64> {
+        let query = format!("CREATE TABLE {name} ({query})");
 
         let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
 
-        Ok(result.rows_affected() as usize)
+        Ok(result.rows_affected())
     }
 
-    pub async fn remove_table(&self, table: &str) -> Result<usize> {
-        let query = format!("DROP TABLE {}", table);
+    pub async fn remove_table(&self, table: &str) -> Result<u64> {
+        let query = format!("DROP TABLE {table}");
         let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
-        Ok(result.rows_affected() as usize)
+        Ok(result.rows_affected())
     }
 
     pub async fn get_column_type(&self, column: &str, table: &str) -> Result<String> {
-        let query = format!(
-            "SELECT type FROM pragma_table_info('{}') WHERE name='{}'",
-            table, column
-        );
+        let query = format!("SELECT type FROM pragma_table_info('{table}') WHERE name='{column}'");
         let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
         let column_type = rows
             .into_iter()
@@ -137,7 +134,7 @@ impl Sqlite {
     }
 
     pub async fn get_rows(&self, column: &str, table: &str) -> Result<Vec<Vec<Value>>> {
-        let query = format!("SELECT {} FROM {};", column, table);
+        let query = format!("SELECT {column} FROM {table};");
 
         let result: Vec<_> = sqlx::query(&query)
             .fetch_all(&self.pool)
@@ -160,7 +157,7 @@ impl Sqlite {
                                 json!(hex::encode(row.get::<Vec<u8>, _>(ordinal)).to_string())
                             }
                             _ => {
-                                panic!("not supported type: {}", type_name);
+                                panic!("not supported type: {type_name}");
                             }
                         }
                     })
@@ -184,13 +181,13 @@ mod tests {
     #[tokio::test]
     async fn test_db_schema_unhappy() {
         let db = Sqlite::new().await.unwrap();
-        assert!(!db.schema().await.is_err());
+        assert!(db.schema().await.is_ok());
     }
 
     #[tokio::test]
     async fn test_db_table_schema_unhappy() {
         let db = Sqlite::new().await.unwrap();
-        assert!(!db.table_schema("users").await.is_err());
+        assert!(db.table_schema("users").await.is_ok());
     }
 
     #[tokio::test]
@@ -221,19 +218,13 @@ mod tests {
         const COLUMN_NAME: &str = "id";
         const COLUMN_TYPE: &str = "INTEGER";
         assert!(db
-            .create_table(
-                TABLE_NAME,
-                format!("{} {}", COLUMN_NAME, COLUMN_TYPE).as_str()
-            )
+            .create_table(TABLE_NAME, format!("{COLUMN_NAME} {COLUMN_TYPE}").as_str())
             .await
             .is_ok());
 
         assert_eq!(
             db.schema().await.unwrap(),
-            format!(
-                "CREATE TABLE {} ({} {})",
-                TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
-            )
+            format!("CREATE TABLE {TABLE_NAME} ({COLUMN_NAME} {COLUMN_TYPE})")
         );
 
         assert_eq!(db.tables().await.unwrap(), vec![TABLE_NAME]);
