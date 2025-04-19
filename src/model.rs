@@ -255,19 +255,19 @@ impl Model {
     }
 
     pub fn longest_in_column(&self) -> u16 {
+        let selected = self.state().selected().unwrap_or(0);
         if let Some(table) = self.tables.get(self.selected_table_id) {
-            if let Some(active_column_index) = table.columns.get(self.active_column) {
-                let longest_row = table
+            if let Some(column_name) = table.columns.get(self.active_column) {
+                let header_len = column_name.as_str().len();
+
+                let cell_len = table
                     .rows()
-                    .iter()
-                    .filter_map(|row| row.get(self.active_column))
-                    .filter_map(|value| value.as_str().map(str::len))
-                    .max()
-                    .unwrap_or(0);
+                    .get(selected)
+                    .and_then(|row| row.get(self.active_column))
+                    .and_then(|value| value.as_str())
+                    .map_or(0, str::len);
 
-                let longest_column = active_column_index.as_str().len();
-
-                return u16::try_from(longest_row.max(longest_column)).unwrap_or(0);
+                return u16::try_from(header_len.max(cell_len)).unwrap_or(0);
             }
         }
         0
