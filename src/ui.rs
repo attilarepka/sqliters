@@ -92,7 +92,7 @@ impl UserInterface {
         frame.render_stateful_widget(t, area, &mut table_state);
     }
 
-    fn render_main_state(model: &Model, highlight_column_style: Style) -> Vec<Row> {
+    fn render_main_state(model: &Model, highlight_column_style: Style) -> Vec<Row<'_>> {
         let mut row_index = 0;
         model
             .tables()
@@ -129,7 +129,7 @@ impl UserInterface {
             .collect()
     }
 
-    fn render_table_state(model: &Model, highlight_column_style: Style) -> Vec<Row> {
+    fn render_table_state(model: &Model, highlight_column_style: Style) -> Vec<Row<'_>> {
         let index = model.state().selected().unwrap_or(0);
         let page = index / MAX_TABLE_ITEMS;
         model
