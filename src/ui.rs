@@ -60,7 +60,7 @@ impl UserInterface {
             });
         let header = Row::new(cells).style(header_style).height(1);
 
-        let mut table_state = model.state().clone();
+        let mut table_state = *model.state();
         let index = model.state().selected().unwrap_or(0);
         table_state.select(Some(index % MAX_TABLE_ITEMS));
         let rows = match model.view_state() {
