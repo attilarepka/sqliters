@@ -123,8 +123,7 @@ impl Model {
             .collect();
         let items: Vec<Result<Table, _>> = futures::future::join_all(items_future).await;
         self.tables = items.into_iter().collect::<Result<Vec<Table>>>()?;
-        self.scroll_state =
-            ScrollbarState::new(self.tables.len().checked_sub(1).unwrap_or_default());
+        self.scroll_state = ScrollbarState::new(self.tables.len().saturating_sub(1));
 
         Ok(())
     }
