@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
-    Column, QueryBuilder, Row, SqlitePool, TypeInfo,
+    AssertSqlSafe, Column, QueryBuilder, Row, SqlitePool, TypeInfo,
 };
 
 #[derive(Debug, Clone)]
@@ -61,26 +61,24 @@ impl Sqlite {
     }
 
     pub async fn table_schema(&self, table: &str) -> Result<String> {
-        let query = format!("SELECT sql FROM sqlite_schema WHERE name='{table}'");
-        let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
+        let row = sqlx::query_scalar("SELECT sql FROM sqlite_schema WHERE name = ?1")
+            .bind(table)
+            .fetch_optional(&self.pool)
+            .await?;
 
-        let mut result = String::new();
-        for row in rows {
-            let schema = row.get::<String, &str>("sql");
-            result.push_str(schema.as_str());
-        }
-
-        Ok(result)
+        Ok(row.unwrap_or_default())
     }
 
-    pub async fn table_columns(&self, table: &str) -> Result<Vec<String>> {
+    pub async fn table_columns(&self, table: &str) -> Result<Vec<String>, sqlx::Error> {
         let query = format!("PRAGMA table_info({table})");
-        let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row: SqliteRow| row.get::<String, &str>("name"))
-            .collect::<Vec<String>>())
+        let rows = sqlx::query(AssertSqlSafe(query.as_str()))
+            .fetch_all(&self.pool)
+            .await?;
+
+        rows.into_iter()
+            .map(|r| r.try_get::<String, _>("name"))
+            .collect::<Result<_, _>>()
     }
 
     pub async fn insert_rows(&self, table: &str, column: &str, rows: &Vec<&str>) -> Result<u64> {
@@ -98,45 +96,53 @@ impl Sqlite {
 
     pub async fn remove_row(&self, row: &str, table: &str) -> Result<u64> {
         let query = format!("DELETE FROM {table} WHERE {row}");
-        let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
+        let result = sqlx::query(AssertSqlSafe(query.as_str()))
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected())
     }
 
     pub async fn remove_column(&self, column: &str, table: &str) -> Result<u64> {
         let query = format!("ALTER TABLE {table} DROP COLUMN {column}");
-        let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
+        let result = sqlx::query(AssertSqlSafe(query.as_str()))
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected())
     }
 
     pub async fn create_table(&self, name: &str, query: &str) -> Result<u64> {
         let query = format!("CREATE TABLE {name} ({query})");
 
-        let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
+        let result = sqlx::query(AssertSqlSafe(query.as_str()))
+            .execute(&self.pool)
+            .await?;
 
         Ok(result.rows_affected())
     }
 
     pub async fn remove_table(&self, table: &str) -> Result<u64> {
         let query = format!("DROP TABLE {table}");
-        let result = sqlx::query(query.as_str()).execute(&self.pool).await?;
+        let result = sqlx::query(AssertSqlSafe(query.as_str()))
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected())
     }
 
     pub async fn get_column_type(&self, column: &str, table: &str) -> Result<String> {
-        let query = format!("SELECT type FROM pragma_table_info('{table}') WHERE name='{column}'");
-        let rows = sqlx::query(query.as_str()).fetch_all(&self.pool).await?;
-        let column_type = rows
-            .into_iter()
-            .map(|row: SqliteRow| row.get::<String, &str>("type"))
-            .collect::<Vec<String>>()[0]
-            .clone();
-        Ok(column_type)
+        Ok(
+            sqlx::query_scalar("SELECT type FROM pragma_table_info(?) WHERE name=?")
+                .bind(table)
+                .bind(column)
+                .fetch_optional(&self.pool)
+                .await?
+                .unwrap_or_default(),
+        )
     }
 
     pub async fn get_rows(&self, column: &str, table: &str) -> Result<Vec<Vec<Value>>> {
-        let query = format!("SELECT {column} FROM {table};");
+        let query = format!("SELECT {column} FROM {table}");
 
-        let result: Vec<_> = sqlx::query(&query)
+        let result: Vec<_> = sqlx::query(AssertSqlSafe(query.as_str()))
             .fetch_all(&self.pool)
             .await?
             .into_iter()
@@ -241,9 +247,9 @@ mod tests {
         assert_eq!(
             db.get_rows(COLUMN_NAME, TABLE_NAME).await.unwrap(),
             vec![
-                vec!["1".to_string()],
-                vec!["2".to_string()],
-                vec!["3".to_string()]
+                vec![1.to_string()],
+                vec![2.to_string()],
+                vec![3.to_string()]
             ]
         );
 

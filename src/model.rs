@@ -362,7 +362,7 @@ impl Model {
                 .into_iter()
                 .map(String::from)
                 .collect()),
-            ViewState::Table => db.table_columns(name.unwrap()).await,
+            ViewState::Table => Ok(db.table_columns(name.unwrap()).await?),
         }
     }
 
