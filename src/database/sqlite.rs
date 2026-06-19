@@ -48,7 +48,7 @@ impl Database for SqliteDb {
         Ok(table_names)
     }
 
-    async fn table_schema(&self, table: &str) -> Result<String> {
+    async fn schema(&self, table: &str) -> Result<String> {
         let rows = sqlx::query_scalar::<_, String>(
             r#"
             SELECT sql
@@ -65,7 +65,7 @@ impl Database for SqliteDb {
         Ok(rows.join(";\n"))
     }
 
-    async fn table_columns(&self, table: &str) -> Result<Vec<String>> {
+    async fn columns(&self, table: &str) -> Result<Vec<String>> {
         let query = format!("PRAGMA table_info({table})");
 
         let rows = sqlx::query(AssertSqlSafe(query.as_str()))
@@ -78,7 +78,7 @@ impl Database for SqliteDb {
             .collect::<Result<_, _>>()?)
     }
 
-    async fn get_rows(&self, column: &str, table: &str) -> Result<Vec<Vec<Value>>> {
+    async fn rows(&self, column: &str, table: &str) -> Result<Vec<Vec<Value>>> {
         let query = format!("SELECT {column} FROM {table}");
 
         let result: Vec<_> = sqlx::query(AssertSqlSafe(query.as_str()))
@@ -130,6 +130,6 @@ mod tests {
     #[tokio::test]
     async fn test_db_table_schema_unhappy() {
         let db = test_db().await;
-        assert!(db.table_schema("users").await.is_ok());
+        assert!(db.schema("users").await.is_ok());
     }
 }

@@ -10,7 +10,7 @@ pub struct SqliteDb {
 
 pub trait Database: Clone {
     async fn tables(&self) -> Result<Vec<String>>;
-    async fn table_schema(&self, table: &str) -> Result<String>;
-    async fn table_columns(&self, table: &str) -> Result<Vec<String>>;
-    async fn get_rows(&self, table: &str, column: &str) -> Result<Vec<Vec<serde_json::Value>>>;
+    async fn schema(&self, table: &str) -> Result<String>;
+    async fn columns(&self, table: &str) -> Result<Vec<String>>;
+    async fn rows(&self, table: &str, column: &str) -> Result<Vec<Vec<serde_json::Value>>>;
 }
