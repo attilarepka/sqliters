@@ -149,15 +149,15 @@ mod tests {
             Ok(vec!["test".into(), "test2".into()])
         }
 
-        async fn table_schema(&self, _table: &str) -> Result<String> {
+        async fn schema(&self, _table: &str) -> Result<String> {
             Ok("".into())
         }
 
-        async fn table_columns(&self, _table: &str) -> Result<Vec<String>> {
+        async fn columns(&self, _table: &str) -> Result<Vec<String>> {
             Ok(Vec::new())
         }
 
-        async fn get_rows(&self, _: &str, _: &str) -> Result<Vec<Vec<serde_json::Value>>> {
+        async fn rows(&self, _: &str, _: &str) -> Result<Vec<Vec<serde_json::Value>>> {
             Ok(Vec::new())
         }
     }

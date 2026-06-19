@@ -127,7 +127,7 @@ impl<D: Database> Model<D> {
                 async move {
                     let columns = Self::columns(None, &db, &ViewState::Main).await?;
                     let rows = Self::rows(id + 1, &table, &db, &ViewState::Main).await?;
-                    let schema = db.table_schema(table.as_str()).await?;
+                    let schema = db.schema(table.as_str()).await?;
                     Ok::<Table, anyhow::Error>(Table::new(table, columns, rows, schema))
                 }
             })
@@ -376,15 +376,15 @@ impl<D: Database> Model<D> {
                 .into_iter()
                 .map(String::from)
                 .collect()),
-            ViewState::Table => Ok(db.table_columns(name.unwrap()).await?),
+            ViewState::Table => Ok(db.columns(name.unwrap()).await?),
         }
     }
 
     async fn rows(id: usize, table: &str, db: &D, view: &ViewState) -> Result<Vec<Vec<Value>>> {
         match view {
             ViewState::Main => {
-                let columns = db.table_columns(table).await?;
-                let rows = db.get_rows("*", table).await?;
+                let columns = db.columns(table).await?;
+                let rows = db.rows("*", table).await?;
                 let len = rows.len();
 
                 Ok(vec![vec![
@@ -396,7 +396,7 @@ impl<D: Database> Model<D> {
                 .into_iter()
                 .collect())
             }
-            ViewState::Table => db.get_rows("*", table).await,
+            ViewState::Table => db.rows("*", table).await,
         }
     }
 
@@ -422,15 +422,15 @@ mod tests {
             Ok(vec!["test".into(), "test2".into()])
         }
 
-        async fn table_schema(&self, _table: &str) -> Result<String> {
+        async fn schema(&self, _table: &str) -> Result<String> {
             Ok("".into())
         }
 
-        async fn table_columns(&self, _table: &str) -> Result<Vec<String>> {
+        async fn columns(&self, _table: &str) -> Result<Vec<String>> {
             Ok(vec!["id".into()])
         }
 
-        async fn get_rows(&self, _: &str, _: &str) -> Result<Vec<Vec<serde_json::Value>>> {
+        async fn rows(&self, _: &str, _: &str) -> Result<Vec<Vec<serde_json::Value>>> {
             Ok(vec![vec![1.into()], vec![2.into()], vec![3.into()]])
         }
     }
