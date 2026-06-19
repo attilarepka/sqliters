@@ -5,7 +5,7 @@ edition = "2021"
 description = "Terminal UI for browsing SQLite databases"
 repository = "https://github.com/attilarepka/sqliters"
 keywords = ["sqlite", "terminal", "ui"]
-licence = "MIT"
+license = "MIT"
 authors = ["Attila Repka"]
 
 [package.metadata.deb]
