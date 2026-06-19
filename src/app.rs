@@ -1,5 +1,4 @@
-#![allow(dead_code)]
-use crate::{db::Sqlite, model::Model, ui::UserInterface};
+use crate::{database::Database, model::Model, ui::UserInterface};
 use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -9,14 +8,14 @@ use ratatui::prelude::*;
 use std::io;
 
 #[derive(Debug)]
-pub struct App {
+pub struct App<D: Database> {
     ui: UserInterface,
-    model: Model,
+    model: Model<D>,
     exit: bool,
 }
 
-impl App {
-    pub async fn new(db: Sqlite) -> Result<App> {
+impl<D: Database> App<D> {
+    pub async fn new(db: D) -> Result<Self> {
         let mut model = Model::new(db);
         model.initialize().await?;
 
@@ -28,11 +27,11 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        let original_hook = std::panic::take_hook();
+        let panic_hook = std::panic::take_hook();
 
         std::panic::set_hook(Box::new(move |panic| {
             Self::reset_terminal().unwrap();
-            original_hook(panic);
+            panic_hook(panic);
         }));
 
         let mut terminal = Self::init_terminal()?;
@@ -134,30 +133,38 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::model::ViewState;
 
-    use super::*;
+    #[derive(Clone)]
+    struct MockDb;
 
-    async fn create_test_db() -> Sqlite {
-        let db = Sqlite::new().await.unwrap();
-        db.create_table("test", format!("{} INTEGER", "id").as_str())
-            .await
-            .unwrap();
-        db.insert_rows("test", "id", &vec!["1", "2", "3"])
-            .await
-            .unwrap();
-        db.create_table("test2", format!("{} INTEGER", "id").as_str())
-            .await
-            .unwrap();
-        db.insert_rows("test2", "id", &vec!["1", "2", "3"])
-            .await
-            .unwrap();
-        db
+    impl MockDb {
+        fn new() -> Self {
+            MockDb
+        }
+    }
+    impl Database for MockDb {
+        async fn tables(&self) -> Result<Vec<String>> {
+            Ok(vec!["test".into(), "test2".into()])
+        }
+
+        async fn table_schema(&self, _table: &str) -> Result<String> {
+            Ok("".into())
+        }
+
+        async fn table_columns(&self, _table: &str) -> Result<Vec<String>> {
+            Ok(Vec::new())
+        }
+
+        async fn get_rows(&self, _: &str, _: &str) -> Result<Vec<Vec<serde_json::Value>>> {
+            Ok(Vec::new())
+        }
     }
 
     #[tokio::test]
     async fn handle_key_events() {
-        let db = create_test_db().await;
+        let db = MockDb::new();
         let mut app = App::new(db).await.unwrap();
 
         app.handle_key_event(KeyEvent::new(KeyCode::Char('q'), event::KeyModifiers::NONE))

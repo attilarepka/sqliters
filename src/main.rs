@@ -1,17 +1,18 @@
 mod app;
 mod cli;
-mod db;
+mod database;
 mod model;
 mod popup;
 mod ui;
 
 use anyhow::Result;
-use db::Sqlite;
+
+use crate::database::SqliteDb;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = cli::Args::from();
-    let db = Sqlite::from(&args.input, false).await?;
+    let db = SqliteDb::connect(&args.input, false).await?;
 
     let mut app = app::App::new(db).await?;
     app.run().await?;
