@@ -4,8 +4,7 @@ use ratatui::{
     widgets::{ScrollbarState, TableState},
 };
 use serde_json::Value;
-use style::palette::tailwind;
-use style::Color;
+use style::{palette::tailwind, Color};
 
 use crate::database::Database;
 
