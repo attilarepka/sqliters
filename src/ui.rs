@@ -1,10 +1,12 @@
-use crate::database::Database;
-use crate::model::{Model, ViewState, ITEM_HEIGHT, MAX_TABLE_ITEMS};
-use crate::popup::Popup;
-use ratatui::text::Text;
+use crate::{
+    database::Database,
+    model::{Model, ViewState, ITEM_HEIGHT, MAX_TABLE_ITEMS},
+    popup::Popup,
+};
 use ratatui::{
     layout::{Constraint, Layout, Margin, Rect},
     style::{Modifier, Style, Stylize},
+    text::Text,
     widgets::{
         Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         Table,
