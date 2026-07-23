@@ -422,7 +422,7 @@ mod tests {
         }
 
         async fn schema(&self, _table: &str) -> Result<String> {
-            Ok("".into())
+            Ok(String::new())
         }
 
         async fn columns(&self, _table: &str) -> Result<Vec<String>> {

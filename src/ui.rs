@@ -232,12 +232,14 @@ impl UserInterface {
             height: area.height / 2,
         };
 
-        let popup = Popup::default()
-            .content((*model.table_schema().as_ref().unwrap()).to_string())
-            .style(Style::new().yellow())
-            .title(String::from("SCHEMA"))
-            .title_style(Style::new().white().bold())
-            .border_style(Style::new().red());
-        frame.render_widget(popup, popup_area);
+        if let Some(schema_text) = model.table_schema() {
+            let popup = Popup::default()
+                .content(schema_text.to_string())
+                .style(Style::new().yellow())
+                .title(String::from("SCHEMA"))
+                .title_style(Style::new().white().bold())
+                .border_style(Style::new().red());
+            frame.render_widget(popup, popup_area);
+        }
     }
 }
