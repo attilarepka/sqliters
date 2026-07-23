@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -50,13 +50,13 @@ impl Database for SqliteDb {
 
     async fn schema(&self, table: &str) -> Result<String> {
         let rows = sqlx::query_scalar::<_, String>(
-            r#"
+            r"
             SELECT sql
             FROM sqlite_schema
             WHERE tbl_name = ?1
               AND sql IS NOT NULL
             ORDER BY type = 'table' DESC, type, name
-            "#,
+            ",
         )
         .bind(table)
         .fetch_all(&self.pool)
@@ -81,34 +81,30 @@ impl Database for SqliteDb {
     async fn rows(&self, column: &str, table: &str) -> Result<Vec<Vec<Value>>> {
         let query = format!("SELECT {column} FROM {table}");
 
-        let result: Vec<_> = sqlx::query(AssertSqlSafe(query.as_str()))
+        let rows = sqlx::query(AssertSqlSafe(query.as_str()))
             .fetch_all(&self.pool)
-            .await?
-            .into_iter()
-            .map(|row| {
-                row.columns()
-                    .iter()
-                    .map(|column| {
-                        let ordinal = column.ordinal();
-                        let type_name = column.type_info().name();
-                        match type_name {
-                            "NULL" => json!("null".to_string()),
-                            "INTEGER" => json!(row.get::<i64, _>(ordinal).to_string()),
-                            "REAL" => json!(row.get::<f64, _>(ordinal).to_string()),
-                            "TEXT" | "DATETIME" => {
-                                json!(row.get::<String, _>(ordinal).to_string())
-                            }
-                            "BLOB" => {
-                                json!(hex::encode(row.get::<Vec<u8>, _>(ordinal)).to_string())
-                            }
-                            _ => {
-                                panic!("not supported type: {type_name}");
-                            }
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+            .await?;
+
+        let mut result: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
+
+        for row in rows {
+            let mut values = Vec::with_capacity(row.columns().len());
+            for column in row.columns() {
+                let ordinal = column.ordinal();
+                let type_name = column.type_info().name();
+                let value = match type_name {
+                    "NULL" => json!("null".to_string()),
+                    "INTEGER" => json!(row.get::<i64, _>(ordinal).to_string()),
+                    "REAL" => json!(row.get::<f64, _>(ordinal).to_string()),
+                    "TEXT" | "DATETIME" => json!(row.get::<String, _>(ordinal).clone()),
+                    "BLOB" => json!(hex::encode(row.get::<Vec<u8>, _>(ordinal)).clone()),
+                    other => return Err(anyhow!("not supported type: {other}")),
+                };
+                values.push(value);
+            }
+            result.push(values);
+        }
+
         Ok(result)
     }
 }

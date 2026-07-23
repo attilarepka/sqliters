@@ -30,7 +30,7 @@ impl<D: Database> App<D> {
         let panic_hook = std::panic::take_hook();
 
         std::panic::set_hook(Box::new(move |panic| {
-            Self::reset_terminal().unwrap();
+            let _ = Self::reset_terminal();
             panic_hook(panic);
         }));
 
@@ -150,7 +150,7 @@ mod tests {
         }
 
         async fn schema(&self, _table: &str) -> Result<String> {
-            Ok("".into())
+            Ok(String::new())
         }
 
         async fn columns(&self, _table: &str) -> Result<Vec<String>> {

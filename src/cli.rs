@@ -4,12 +4,6 @@ use clap::Parser;
 #[command(author, version, about = "sqliters", long_about = None)]
 pub struct Args {
     /// Input sqlite file
-    #[clap(long, short)]
+    #[arg(index = 1)]
     pub input: String,
-}
-
-impl Args {
-    pub fn from() -> Args {
-        Args::parse()
-    }
 }
